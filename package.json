@@ -1,0 +1,23 @@
+{
+  "name": "pteam-bot",
+  "version": "1.0.0",
+  "description": "Upcoming Slack Bot for JCA Production Team",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jsk56143/pteam-bot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jsk56143/pteam-bot/issues"
+  },
+  "homepage": "https://github.com/jsk56143/pteam-bot#readme",
+  "dependencies": {
+    "googleapis": "^105.0.0"
+  }
+}
