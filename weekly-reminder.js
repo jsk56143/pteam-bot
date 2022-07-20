@@ -36,7 +36,7 @@ var userArray = Object.values(USERS);
 const user = "Josh"
 //const userID = "U03P9EMLB98" // memberID in Slack
 
-const spreadsheet = SpreadsheetApp.openById("1TlPboL6wBnEKFkOQW0rii0aBevuGK4PW0bFW1a8kqA0");
+const spreadsheet = SpreadsheetApp.openById("<ID>");
 const logistics_sheet = spreadsheet.getSheetByName("Logistics");
 let rotation_fieldCount = 12; // Update this if you add more fields to the rotation object
 
@@ -325,7 +325,7 @@ async function rest() {
 function formatPayload_postMessage(user) {
   let rotation = getLatestRotations();
   let payload = {
-    channel: "U03P9EMLB98",
+    channel: "<ID>",
     blocks: [
       {
         type: "section",
@@ -697,8 +697,8 @@ function formatPayload_updatePost(user, timestamp, channelID) {
 
 function requestSlack(method, endpoint, params) {
   const base_url = "https://slack.com/api/";
-  const headers = {
-    'Authorization': "Bearer xoxb-3804154765057-3791572762146-PPnge7Boa8lqOsfAfFciPVhq",
+  const headers = {x
+    'Authorization': "Bearer <TOKEN>",
     'Content-Type': 'application/json'
   };
   const options = {
