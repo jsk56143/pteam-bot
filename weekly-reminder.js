@@ -1,13 +1,6 @@
-// Date: 07/13/2022
+// Original Date: 07/13/2022
+// Last Updated: 07/27/2022
 // Author: Josh Kim 
-
-/* 1. Add Day and Date in SpreadSheet
-*  2. Tag user ID: not a good idea bc if someone updates the schedule, then you'd have to notify a different person
-* Text formatting: https://api.slack.com/reference/surfaces/formatting
-* Work on adding future rotations
-* Work on adding update daily
-*/
-
 
 // Enums for all rows
 const SHEET_ROWS = {
@@ -26,22 +19,45 @@ const SHEET_ROWS = {
   YOUTH_ASSISTANTS: "Youth Assistants"
 }
 
-/*
-// Enums for all users of this script
-const USERS = {
-  JEVONS: "Jevons"
-}
-var userArray = Object.values(USERS);
-*/
+// Configuration Options
 const user = "Josh"
-//const userID = "U03P9EMLB98" // memberID in Slack
-
-const spreadsheet = SpreadsheetApp.openById("<ID>");
-const logistics_sheet = spreadsheet.getSheetByName("Logistics");
+const spreadsheet = SpreadsheetApp.openById("<SPREADHSHEET ID>");
+const logistics_sheet = spreadsheet.getSheetByName("<SHEET NAME>");
 let rotation_fieldCount = 12; // Update this if you add more fields to the rotation object
 
-/*
+/**
+ * 1. Post a formatted payload to the Slack destination. In this case, it's a personal DM to myself.
+ * 2. Save the timestamp of the message. This is how Slack differentiates one message from another. We 
+ *    need the timestamp to update that particular message.
+ * 3. Save the channelID. Apparently, the channelID you send the first message to is not the one to use
+ *    when updating the message in that particuar channel. You have to use the one returned from the API.
+ */
 function sendWeeklyRotations() {
+  let postMessage_payload = formatPayload_postMessage(user);
+  let post_message_request = requestSlack("POST", "chat.postMessage", postMessage_payload);
+  Logger.log("Post message request: " + JSON.stringify(post_message_request));
+  saveTimestamp(post_message_request.response_data.ts);
+  saveChannelID(post_message_request.response_data.channel);
+}
+
+/**
+ * 1. Read the timestamp of the posted message.
+ * 2. Read the channelID that the message is in.
+ * 3. Update the message if there were any changes in the Google Spreadsheets.
+ * 4. Save the timestamp again. Don't know if this is necessary but don't want to break the code.
+ */
+function updateHourlyRotations() {
+  let ts = readTimestamp();
+  let channelID = readChannelID();
+  let updateMessage_payload = formatPayload_updatePost(user, ts, channelID);
+  let update_message_request = requestSlack("POST", "chat.update", updateMessage_payload);
+  Logger.log("Update message request: " + JSON.stringify(update_message_request));
+  saveTimestamp(update_message_request.response_data.ts)
+  rest(); // To comply with rate-limiting
+}
+
+// (Send to multiple people in Slack Workspace)
+/* function sendWeeklyRotations() {
   for (let i = 0; i < userArray.length; i++) {
     let postMessage_payload = formatPayload(userArray[i]);
     let post_message_request = requestSlack("POST", "chat.postMessage", postMessage_payload);
@@ -60,43 +76,31 @@ function updateHourlyRotations() {
 }
 */
 
-function sendWeeklyRotations() {
-  let postMessage_payload = formatPayload_postMessage(user);
-  let post_message_request = requestSlack("POST", "chat.postMessage", postMessage_payload);
-  console.log("AAAAA: " + post_message_request.response_data.ts);
-  Logger.log("Post message request: " + JSON.stringify(post_message_request));
-  saveTimestamp(post_message_request.response_data.ts);
-  saveChannelID(post_message_request.response_data.channel);
-}
-
-function updateHourlyRotations() {
-  let ts = readTimestamp();
-  let channelID = readChannelID();
-  let updateMessage_payload = formatPayload_updatePost(user, ts, channelID);
-  let update_message_request = requestSlack("POST", "chat.update", updateMessage_payload);
-  Logger.log("Update message request: " + JSON.stringify(update_message_request));
-  saveTimestamp(update_message_request.response_data.ts)
-  rest();
-}
-
-
-
-function getLatestRotations() {
+/**
+ * Reads the latest changes from the Google Spreadsheet.
+ * 
+ * @param {Boolean} updateColCondition condition to read in the next 2 columns or not
+ * @return {jQuery.jqXHR} the latest rotations for this upcoming week and next week
+ */
+function getLatestRotations(updateColCondition) {
   let startingCol = parseInt(readStartingSheetColumn());
   if (startingCol == -1) {
-    console.log("Key-value pair data not saved. Check the Script Properties in the Settings.")
+    Logger.log("Key-value pair data not saved. Check the Script Properties in the Settings.")
   }
-  console.log("Starting col: " + startingCol);
-  saveStartingSheetColumn(startingCol + 2);
+  Logger.log("Starting col: " + startingCol);
+  if (updateColCondition) {
+    saveStartingSheetColumn(startingCol + 2);
+  }
 
-  let values = logistics_sheet.getRange(1,startingCol,20,4).getValues(); // getRange(starting row index, starting column index, num. of rows to return, num. of cols to return)
-  //console.log(values);
+  // getRange(starting row index, starting column index, num. of rows to return, num. of cols to return)
+  let values = logistics_sheet.getRange(1,startingCol,20,4).getValues();
+  Logger.log(values);
 
   let rows = getRows();
 
   const rotations = {
     first: {
-      day: getFormattedDay(values[rows.day][0]),
+      day: getFormattedDay(values[2][0]),
       date: getFormattedDate(values[3][0]),
       rotationStatus: values[rows.rotationStatus][0],
       prayerLead: values[rows.prayerLead][0],
@@ -111,7 +115,7 @@ function getLatestRotations() {
       youthAssistants: values[rows.youthAssistants][0]
     },
     second: {
-      day: getFormattedDay(values[rows.day][1]),
+      day: getFormattedDay(values[2][1]),
       date: getFormattedDate(values[3][1]),
       rotationStatus: values[rows.rotationStatus][1],
       prayerLead: values[rows.prayerLead][1],
@@ -126,7 +130,7 @@ function getLatestRotations() {
       youthAssistants: values[rows.youthAssistants][1]
     },
     third: {
-      day: getFormattedDay(values[rows.day][2]),
+      day: getFormattedDay(values[2][2]),
       date: getFormattedDate(values[3][2]),
       rotationStatus: values[rows.rotationStatus][2],
       prayerLead: values[rows.prayerLead][2],
@@ -141,7 +145,7 @@ function getLatestRotations() {
       youthAssistants: values[rows.youthAssistants][2]
     },
     fourth: {
-      day: getFormattedDay(values[rows.day][3]),
+      day: getFormattedDay(values[2][3]),
       date: getFormattedDate(values[3][3]),
       rotationStatus: values[rows.rotationStatus][3],
       prayerLead: values[rows.prayerLead][3],
@@ -156,7 +160,7 @@ function getLatestRotations() {
       youthAssistants: values[rows.youthAssistants][3]
     }
   }
-  //console.log(rotations);
+  Logger.log(rotations);
   return rotations;
 }
 
@@ -164,11 +168,16 @@ function getLatestRotations() {
 * HELPER FUNCTIONS
 ==============================*/
 
-// Get row of prayerLead
-// Don't want to hardcode row bc of possible changes to spreadsheet (Example: Most recent addition was the role of Editor)
+/**
+ * Gets the rows of each individual object from SHEET_ROWS enum. All of these headers are
+ * hard-coded in the Google Spreadsheet, but just in case, someone modifies the sheet, this
+ * is what the function is for. I didn't want to hard-code the row values.
+ * 
+ * @return {jQuery.jqXHR} rows for each object
+ */
 function getRows() {
   let values = logistics_sheet.getRange(1,1,31).getValues();
-  //console.log(values);
+  Logger.log(values);
 
   const rows = {}; // row for each roles
   for (let i = 0; i < values.length; i++) {
@@ -221,20 +230,30 @@ function getRows() {
   return rows;
 }
 
+/**
+ * Saves the column in which to start reading from.
+ * 
+ * @param {Number} startingCol column to start reading from
+ */
 function saveStartingSheetColumn(startingCol) {
   try {
     const userProperties = PropertiesService.getUserProperties();
-    userProperties.setProperty('NEW_COL', startingCol);
+    userProperties.setProperty('<KEY NAME>', 162);
   } catch (err) {
     Logger.log('Failed saving starting sheet column: %s', err.message);
   }
 }
 
+/**
+ * Obtain the column in which to start reading from.
+ * 
+ * @return {Number} column to start reading from
+ */
 function readStartingSheetColumn() {
   try {
     // Get the value for the user property 'NEW_COL'.
     const userProperties = PropertiesService.getUserProperties();
-    const col = userProperties.getProperty('NEW_COL');
+    const col = userProperties.getProperty('<KEY NAME>');
     console.log("col: " + col);
     Logger.log("Read starting sheet column: "+ col);
     return col;
@@ -245,21 +264,31 @@ function readStartingSheetColumn() {
   }
 }
 
+/**
+ * Saves the timestamp of the message.
+ * 
+ * @param {String} timestamp timestamp of message
+ */
 function saveTimestamp(timestamp) {
   try {
     Logger.log("Save timestamp: " + timestamp);
     const userProperties = PropertiesService.getUserProperties();
-    userProperties.setProperty('Josh_ts', timestamp);
+    userProperties.setProperty('<KEY NAME>', timestamp);
   } catch (err) {
     Logger.log('Failed saving timestamp: %s', err.message);
   }
 }
 
+/**
+ * Obtain the timestamp of the message
+ * 
+ * @return {String} timestamp of the message
+ */
 function readTimestamp() {
   try {
     // Get the value for the user property 'Josh_ts'.
     const userProperties = PropertiesService.getUserProperties();
-    const ts = userProperties.getProperty('Josh_ts');
+    const ts = userProperties.getProperty('<KEY NAME>');
     Logger.log("Read Josh_timestamp: " + ts);
     return ts;
   } catch (err) {
@@ -269,21 +298,31 @@ function readTimestamp() {
   }
 }
 
+/**
+ * Saves the channelID in which to post the message to
+ * 
+ * @param {String} channelID id of channel 
+ */
 function saveChannelID(channelID) {
   try {
     Logger.log("Save Josh_channelID: " + channelID);
     const userProperties = PropertiesService.getUserProperties();
-    userProperties.setProperty('Josh_channelID', channelID);
+    userProperties.setProperty('<KEY NAME>', channelID);
   } catch (err) {
     Logger.log('Failed saving Josh_channelID: %s', err.message);
   }
 }
 
+/**
+ * Obtain the channelID
+ * 
+ * @return {String} id of channel
+ */
 function readChannelID() {
   try {
     // Get the value for the user property 'Josh_channelID'.
     const userProperties = PropertiesService.getUserProperties();
-    const channelID = userProperties.getProperty('Josh_channelID');
+    const channelID = userProperties.getProperty('<KEY NAME>');
     Logger.log("Read Josh_channelID: " + channelID);
     return channelID;
   } catch (err) {
@@ -293,7 +332,13 @@ function readChannelID() {
   }
 }
 
-//https://stackoverflow.com/questions/11591854/format-date-to-mm-dd-yyyy-in-javascript
+/**
+ * Formats the date from "2010-10-11T00:00:00+05:30" to "MM-DD-YY". This function is copy and pasted from the below source.
+ * https://stackoverflow.com/questions/11591854/format-date-to-mm-dd-yyyy-in-javascript
+ * 
+ * @param {String} date date to format
+ * @return {String} MM-DD-YY format
+ */
 function getFormattedDate(date) {
     let year = date.getFullYear();
     let month = (1 + date.getMonth()).toString().padStart(2, '0');
@@ -302,6 +347,12 @@ function getFormattedDate(date) {
     return month + '/' + day + '/' + year;
 }
 
+/**
+ * Basically just formats the word into the capitalization I want
+ * 
+ * @param {String} day day to format
+ * @return {String} formatted day
+ */
 function getFormattedDay(day) {
   if (day == "FRIDAY") {
     return "Friday";
@@ -312,20 +363,35 @@ function getFormattedDay(day) {
   }
 }
 
+/**
+ * Helper function for rest(). Helps to make to program "sleep" for a specific amount of time.
+ * 
+ * @param {Number} ms milliseconds to sleep
+ * @return {Promise} promise
+ */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Make the program "rest" for a specific amount of time. Helps with rate-limiting.
+ */
 async function rest() {
   console.log('Taking a break...');
   await sleep(5000);
   console.log('Five seconds later');
 }
 
+/**
+ * Using Markdown, a markup language, format the payload for posting a new message.
+ * 
+ * @param {String} user determine if user is in rotation
+ * @return {jQuery.jqXHR} payload to send via Slack API
+ */
 function formatPayload_postMessage(user) {
-  let rotation = getLatestRotations();
+  let rotation = getLatestRotations(true);
   let payload = {
-    channel: "<ID>",
+    channel: "<CHANNEL ID>",
     blocks: [
       {
         type: "section",
@@ -507,8 +573,14 @@ function formatPayload_postMessage(user) {
   return payload;
 }
 
+/**
+ * Using Markdown, a markup language, format the payload for updating the message.
+ * 
+ * @param {String} user determine if user is in rotation
+ * @return {jQuery.jqXHR} payload to send via Slack API
+ */
 function formatPayload_updatePost(user, timestamp, channelID) {
-  let rotation = getLatestRotations();
+  let rotation = getLatestRotations(false);
   let payload = {
     channel: channelID,
     ts: timestamp,
@@ -695,10 +767,18 @@ function formatPayload_updatePost(user, timestamp, channelID) {
   return payload;
 }
 
+/**
+ * Function to send a POST HTTP request to a Slack API endpoint
+ * 
+ * @param {String} method in this case, it's POST
+ * @param {String} endpoint Slack API endpoint
+ * @param {String} params the payload
+ * @return {jQuery.jqXHR} response data
+ */
 function requestSlack(method, endpoint, params) {
   const base_url = "https://slack.com/api/";
-  const headers = {x
-    'Authorization': "Bearer <TOKEN>",
+  const headers = {
+    'Authorization': "Bearer <AUTHORIZATION>",
     'Content-Type': 'application/json'
   };
   const options = {
